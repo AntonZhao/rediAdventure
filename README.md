@@ -86,3 +86,75 @@ end
 锁冲突了咋办嘛？
 - 实现一个延时队列 
 - 参考 com.anton.Chapter1.RedisDelayingQueue
+
+使用lua合并 zrangebyscore和zrem 操作
+```lua
+local temp = redis.call('zrangebyscore', KEYS[1], '0', ARGV[1], 'limit', '0', '1')
+if #temp > 0 then
+    if redis.call('zrem', KEYS[1], temp[1]) > 0 then
+        return temp[1];
+    else
+        return 'FAILED_REMOVE'
+    end
+else
+    return 'VALUES_EMPTY'
+end
+```
+
+Java
+
+```java
+String lua = "local temp = redis.call('zrangebyscore', KEYS[1], '0', ARGV[1], 'limit', '0', '1')\n" +
+    "if #temp > 0 then\n" +
+    "    if redis.call('zrem', KEYS[1], temp[1]) > 0 then\n" +
+    "        return temp[1];\n" +
+    "    else\n" +
+    "        return 'FAILED_REMOVE'\n" +
+    "    end\n" +
+    "else\n" +
+    "    return 'VALUES_EMPTY'\n" +
+    "end";
+String eval = jedis.eval(lua, 1, queueKey, System.currentTimeMillis() + "").toString();
+if (VALUES_EMPTY.equals(eval)) {
+    try {
+        Thread.sleep(500);
+    } catch (InterruptedException e) {
+        e.printStackTrace();
+    }
+    continue;
+}
+if (FAILED_REMOVE.equals(eval)) {
+    System.out.println("hahah");
+    continue;
+}
+TaskItem<T> task = JSON.parseObject(eval, TaskType);
+this.handleMsg(task.msg);
+```
+
+- 之前的 'FAILED_REMOVE'和 'VALUES_EMPTY' 写的是 return nil，不知道为什么执行后会返回1，改成字符串后正常了。
+
+- 使用lua后可以消费了
+
+  ```java
+  consumer1 消费了 anton1
+  consumer2 消费了 anton0
+  consumer1 消费了 anton2
+  consumer1 消费了 anton3
+  consumer1 消费了 anton4
+  consumer2 消费了 anton5
+  consumer2 消费了 anton6
+  consumer2 消费了 anton7
+  consumer1 消费了 anton8
+  consumer1 消费了 anton9
+  ```
+
+- 但是最后关闭jedis的时候会有些问题，不太懂，可能是jedis连接池的一些问题
+
+  ```
+  Exception in thread "consumer1" redis.clients.jedis.exceptions.JedisDataException: ERR Protocol error: invalid multibulk length
+  ...
+  Exception in thread "consumer2" redis.clients.jedis.exceptions.JedisConnectionException: Unexpected end of stream.
+  ...
+  ```
+
+  
