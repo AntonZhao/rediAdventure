@@ -1,4 +1,4 @@
-## 1.2 万丈高楼平地起 --- Redis基础数据结构
+## 1. Redis基础数据结构
 
 ### Redis安装
 
@@ -58,3 +58,31 @@ score ：排序权重，数据结构：跳表
 过期的单位是对象
 
 重新set会使过期时间消失
+
+## 2. redis 实现分布式锁
+
+就是利用 `set key value ex [time] nx`
+
+超时问题：lua脚本
+```lua
+if redis.call("get",KEYS[1]) == ARGV[1] then
+    return redis.call("del",KEYS[1])
+else
+    return 0
+end
+```
+
+可重入怎么实现：笨，ThreadLocal呀
+- 参考 com.anton.Chapter1.RedisWithReentrantLock
+
+## 3. redis 实现消息队列
+
+利用 list 的 `lpush和rpop` || `rpush和lpop`
+
+队列空了咋办？
+- 加b呀，blpop/brpop/blpush/brpush
+- b就是blocking，可以阻塞
+
+锁冲突了咋办嘛？
+- 实现一个延时队列 
+- 参考 com.anton.Chapter1.RedisDelayingQueue
